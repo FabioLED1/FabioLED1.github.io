@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lampe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c111d;
+    --panel: #151c2d;
+    --line: #243049;
+    --ink: #eef2f8;
+    --mute: #8a97b0;
+    --accent: #7fb2ff;
+    --l: 0;
+    --p: 50%;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Sora", system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 20px 20px 28px;
+    /* Raumlicht: der Hintergrund hellt mit der Lampe auf */
+    background-image: radial-gradient(ellipse 70% 50% at 50% 38%, rgba(190,215,255,calc(var(--l) * .16)), transparent 70%);
+    transition: background-image .3s;
+  }
+  header { width: 100%; max-width: 440px; display: flex; justify-content: space-between; align-items: center; }
+  h1 { font-size: 1.25rem; font-weight: 700; margin: 0; letter-spacing: -.01em; }
+  .status {
+    display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--mute); font: inherit; font-size: .85rem;
+    padding: 8px 14px; border-radius: 999px; cursor: pointer;
+  }
+  .status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #55607a; }
+  .status.on { color: var(--ink); }
+  .status.on::before { background: #4ade80; }
+  .status.busy::before { background: #fbbf24; }
+
+  main { flex: 1; width: 100%; max-width: 440px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 40px; }
+
+  .orb {
+    position: relative; width: min(72vw, 300px); aspect-ratio: 1; border-radius: 50%;
+    border: 1px solid var(--line); background: var(--panel); cursor: pointer;
+    font: inherit; font-size: 1.1rem; font-weight: 500; color: var(--mute);
+    display: grid; place-items: center; overflow: hidden;
+    box-shadow: 0 0 calc(var(--l) * 150px) calc(var(--l) * 28px) rgba(190,215,255,calc(var(--l) * .5));
+    transition: box-shadow .3s, color .3s;
+  }
+  .orb::before {
+    content: ""; position: absolute; inset: 0; border-radius: 50%;
+    background: radial-gradient(circle at 50% 38%, #fff 0%, #e4edff 55%, #bfd0f2 100%);
+    opacity: var(--l); transition: opacity .3s;
+  }
+  .orb span { position: relative; }
+  .orb[aria-pressed="true"] { color: #0c111d; }
+  .orb:disabled { cursor: not-allowed; opacity: .55; }
+  .orb:focus-visible, .status:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+
+  .dim { width: 100%; }
+  .dim label { display: flex; justify-content: space-between; font-size: .9rem; color: var(--mute); margin-bottom: 14px; }
+  .dim output { color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 44px; background: transparent; margin: 0; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 8px; border-radius: 8px;
+    background: linear-gradient(90deg, var(--accent) var(--p), var(--line) var(--p));
+  }
+  input[type=range]::-moz-range-track { height: 8px; border-radius: 8px; background: var(--line); }
+  input[type=range]::-moz-range-progress { height: 8px; border-radius: 8px; background: var(--accent); }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 28px; height: 28px; border-radius: 50%; background: #fff; border: 0; margin-top: -10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.5);
+  }
+  input[type=range]::-moz-range-thumb { width: 28px; height: 28px; border-radius: 50%; background: #fff; border: 0; }
+  input:disabled { opacity: .4; cursor: not-allowed; }
+
+  .hint { font-size: .8rem; color: var(--mute); text-align: center; max-width: 36ch; line-height: 1.5; min-height: 1.5em; margin: 0; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Lampe</h1>
+    <button class="status" id="status" type="button">Verbinden</button>
+  </header>
+
+  <main>
+    <button class="orb" id="orb" type="button" aria-pressed="false" disabled><span id="orbText">Aus</span></button>
+
+    <div class="dim">
+      <label for="dim">Helligkeit <output id="pct">50 %</output></label>
+      <input id="dim" type="range" min="1" max="100" value="50" disabled>
+    </div>
+
+    <p class="hint" id="hint">Tippe auf „Verbinden“ und wähle „Lampe-ESP32“ aus.</p>
+  </main>
+
+<script>
+  const SERVICE = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+  const CHAR    = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+
+  const $ = id => document.getElementById(id);
+  const orb = $("orb"), dim = $("dim"), statusBtn = $("status");
+  let device = null, ch = null, timer = null;
+  const state = { on: false, pct: 50 };
+
+  function render() {
+    const level = state.on ? 0.12 + 0.88 * (state.pct / 100) : 0;
+    document.documentElement.style.setProperty("--l", level.toFixed(3));
+    document.documentElement.style.setProperty("--p", ((state.pct - 1) / 99 * 100).toFixed(1) + "%");
+    orb.setAttribute("aria-pressed", state.on);
+    $("orbText").textContent = state.on ? "An" : "Aus";
+    dim.value = state.pct;
+    $("pct").textContent = state.pct + " %";
+  }
+
+  function setStatus(text, cls, hint) {
+    statusBtn.textContent = text;
+    statusBtn.className = "status " + (cls || "");
+    if (hint !== undefined) $("hint").textContent = hint;
+  }
+
+  function setControls(enabled) { orb.disabled = dim.disabled = !enabled; }
+
+  function apply(dv) {
+    state.on = dv.getUint8(0) === 1;
+    state.pct = Math.max(1, dv.getUint8(1));
+    render();
+  }
+
+  function send() {
+    if (!ch || timer) return;
+    timer = setTimeout(async () => {
+      timer = null;
+      try { await ch.writeValue(Uint8Array.of(state.on ? 1 : 0, state.pct)); }
+      catch (e) { setStatus("Verbinden", "", "Senden fehlgeschlagen. Bitte neu verbinden."); }
+    }, 60);
+  }
+
+  async function connect() {
+    if (!navigator.bluetooth) {
+      $("hint").textContent = "Dieser Browser unterstützt kein Web Bluetooth. Nutze Chrome oder Edge (Android, Windows, Mac, Linux).";
+      return;
+    }
+    try {
+      device = await navigator.bluetooth.requestDevice({
+        filters: [{ namePrefix: "Lampe" }, { services: [SERVICE] }],
+        optionalServices: [SERVICE]
+      });
+      setStatus("Verbinde …", "busy");
+      device.addEventListener("gattserverdisconnected", () => {
+        ch = null; setControls(false);
+        setStatus("Verbinden", "", "Verbindung getrennt. Tippe auf „Verbinden“.");
+      });
+      const server = await device.gatt.connect();
+      const svc = await server.getPrimaryService(SERVICE);
+      ch = await svc.getCharacteristic(CHAR);
+      ch.addEventListener("characteristicvaluechanged", e => apply(e.target.value));
+      await ch.startNotifications();
+      apply(await ch.readValue());
+      setControls(true);
+      setStatus("Verbunden", "on", "Poti und Schalter an der Lampe funktionieren weiter.");
+    } catch (e) {
+      setStatus("Verbinden", "", e.name === "NotFoundError" ? "Keine Lampe ausgewählt." : "Verbindung fehlgeschlagen. Versuche es noch einmal.");
+    }
+  }
+
+  statusBtn.addEventListener("click", () => {
+    if (ch) device.gatt.disconnect(); else connect();
+  });
+  orb.addEventListener("click", () => { state.on = !state.on; render(); send(); });
+  dim.addEventListener("input", () => {
+    state.pct = +dim.value;
+    if (!state.on) state.on = true;
+    render(); send();
+  });
+
+  render();
+</script>
+</body>
+</html>
